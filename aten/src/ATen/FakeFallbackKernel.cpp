@@ -82,9 +82,6 @@
 // this divergence rather than pay for live lookups or propagate the snapshot
 // through Python handlers.
 //
-// TODO: an op in torch._dynamo.config._custom_ops_profile runs its Meta kernel
-// here, where Python runs the profile's generic fake kernel.
-//
 // TODO: in-place output conversion changes raw Meta tensors retained by a
 // kernel and bypasses the converter's memo. On later calls they are existing
 // fakes, so a changed common device or a prior device override can cause a
@@ -750,7 +747,10 @@ void fakeFallback(
       return;
     }
   }
-  // Match library_utils.is_builtin before probing custom kernel registrations.
+  if ((*interpreter)->fake_try_custom_op_profile(op, stack, mode)) {
+    return;
+  }
+  // Match library_utils.is_builtin before inferring custom fake kernels.
   const auto op_namespace = op.operator_name().getNamespace();
   const bool is_builtin = op_namespace &&
       (*op_namespace == "aten" || *op_namespace == "prim" || *op_namespace == "prims");
