@@ -6,10 +6,11 @@
 SHA is a commit that trunk.yml has built. Each L4 job of
 linux-jammy-cuda13.2-py3.11-gcc11 / test (default 1-14 and inductor 1-2) gets a
 sandbox of its own: CI's image for the commit, the build artifact and the target
-determination results that the trunk run published, one L4 with 11 CPUs and
-41 GiB, and .ci/pytorch/test.sh with the job's environment. A job's log, exit
-code and test reports go to the Modal Volume pytorch-l4-jobs, under
-SHA/CONFIG-SHARD. Exits 1 if a job fails.
+determination results that the trunk run published, one L4, and
+.ci/pytorch/test.sh with the job's environment. No CPUs or memory are reserved:
+Modal bills a sandbox for what it uses. A job's log, exit code and test reports
+go to the Modal Volume pytorch-l4-jobs, under SHA/CONFIG-SHARD. Exits 1 if a job
+fails.
 
 Needs `pip install modal` and `modal token new`.
 """
@@ -40,11 +41,9 @@ TESTS_TO_EXCLUDE = (
     "inductor/test_torchinductor inductor/test_torchinductor_opinfo "
     "inductor/test_aot_inductor inductor/test_cpu_select_algorithm"
 )
-# The runner l-x86aavx2-11-41-l4, and the job's timeout-minutes. Modal takes the
-# CPUs and memory as a request: a sandbox may use more
+# The runner's GPU, and the job's timeout-minutes. No CPUs or memory are
+# requested: a request is the least Modal bills for, and a sandbox may use more
 GPU = "L4"
-CPUS = 11
-MEMORY_MIB = 41 * 1024
 TIMEOUT_SECONDS = 360 * 60
 NAME = "pytorch-l4-jobs"  # the Modal app and Volume
 WORKSPACE = "/__w/pytorch/pytorch"  # where CI runs the job
@@ -78,9 +77,9 @@ set -euo pipefail
 OUT=/out/$SHA1/$TEST_CONFIG-$SHARD_NUMBER
 mkdir -p "$OUT"
 exec > >(tee "$OUT/log.txt") 2>&1
-# Modal sets these to the CPUs requested. test.sh picks a quarter of the CPUs it
-# sees, at least 4: 4 on CI's runner, more here, where a sandbox sees the CPUs
-# it may use
+# Modal sets these from the CPUs requested. test.sh picks a quarter of the CPUs
+# it sees, at least 4, which is 4 on CI's runner; a sandbox sees the CPUs it may
+# use, so the value is fixed here
 unset MKL_NUM_THREADS OPENBLAS_NUM_THREADS BLIS_NUM_THREADS
 export OMP_NUM_THREADS=4
 git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -214,8 +213,6 @@ def main() -> int:
             app=app,
             image=built,
             gpu=GPU,
-            cpu=CPUS,
-            memory=MEMORY_MIB,
             timeout=TIMEOUT_SECONDS,
             volumes={"/out": volume},
             env=environment(sha, run_id, config, shard),
